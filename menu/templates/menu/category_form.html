@@ -1,0 +1,23 @@
+{% extends "menu/base.html" %}
+{% block title %}{% if form.instance.pk %}Edit category{% else %}Add category{% endif %} · Tavola{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div><h1>{% if form.instance.pk %}Edit category{% else %}Add category{% endif %}</h1></div>
+</div>
+
+<form method="post" class="card">
+  {% csrf_token %}
+  {% for field in form %}
+    <div class="form-row">
+      <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+      {{ field }}
+      {% if field.errors %}<ul class="errorlist">{% for e in field.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+    </div>
+  {% endfor %}
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">Save category</button>
+    <a class="btn btn-ghost" href="{% url 'category_list' %}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

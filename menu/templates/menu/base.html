@@ -1,0 +1,65 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Tavola{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'menu/css/style.css' %}">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+    <div class="brand">Tambala Kitchen<small>Menu &amp; Orders</small></div>
+    <nav class="nav">
+      <a href="{% url 'home' %}">Dashboard</a>
+
+      <span class="group-label">Menu</span>
+      <a href="{% url 'menuitem_list' %}">Menu items</a>
+      <a href="{% url 'category_list' %}">Categories</a>
+
+      <span class="group-label">Service</span>
+      <a href="{% url 'order_list' %}">Orders</a>
+      <a href="{% url 'order_create' %}">New order</a>
+      <a href="{% url 'customer_list' %}">Customers</a>
+
+      <span class="group-label">Insight</span>
+      <a href="{% url 'daily_report' %}">Daily sales</a>
+      <a href="/api/orders/today/">API: today's orders</a>
+    </nav>
+
+    <div class="sidebar-footer">
+      {% if user.is_authenticated %}
+        <div>Signed in as</div>
+        <div class="user">{{ user.username }}</div>
+        <form method="post" action="{% url 'logout' %}">
+          {% csrf_token %}
+          <button type="submit" class="linklike">Log out</button>
+        </form>
+      {% else %}
+        <a href="{% url 'login' %}">Log in</a> &middot; <a href="{% url 'register' %}">Register</a>
+      {% endif %}
+    </div>
+    </div>
+  </aside>
+
+  <main class="content">
+    {% if messages %}
+      <ul class="messages">
+        {% for message in messages %}
+          <li class="{{ message.tags }}">{{ message }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,62 @@
+{% extends "menu/base.html" %}
+{% load static %}
+{% block title %}{% if is_create %}New order{% else %}Edit order #{{ order.pk }}{% endif %} · Tavola{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{% if is_create %}Place an order{% else %}Edit order #{{ order.pk }}{% endif %}</h1>
+  </div>
+</div>
+
+<form method="post" class="card" style="max-width:760px">
+  {% csrf_token %}
+
+  {# --- Order header: customer + status (both FK / choice drop-downs) --- #}
+  {% for field in form %}
+    <div class="form-row">
+      <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+      {{ field }}
+      {% if field.errors %}<ul class="errorlist">{% for e in field.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+    </div>
+  {% endfor %}
+
+  <h2 style="margin-top:24px;font-size:1.2rem">Items</h2>
+  {{ formset.management_form }}
+  {% if formset.non_form_errors %}<ul class="errorlist">{% for e in formset.non_form_errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+
+  <div class="lines" id="lines">
+    <div class="line" style="border-top:none;font-size:.74rem;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft)">
+      <div>Menu item</div><div>Quantity</div><div style="text-align:right">Line total</div><div></div>
+    </div>
+    {% for line_form in formset %}
+      <div class="line">
+        {{ line_form.id }}
+        <div>
+          {{ line_form.menu_item }}
+          {% if line_form.menu_item.errors %}<ul class="errorlist">{% for e in line_form.menu_item.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+        </div>
+        <div>{{ line_form.quantity }}</div>
+        <div class="line-total">$0.00</div>
+        <div class="del">
+          {% if formset.can_delete %}{{ line_form.DELETE }}{% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="order-total">Running total: <span id="running-total">$0.00</span></div>
+
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">{% if is_create %}Place order{% else %}Save changes{% endif %}</button>
+    <a class="btn btn-ghost" href="{% url 'order_list' %}">Cancel</a>
+  </div>
+</form>
+
+{# Price map: menu_item id -> price, so JS can show line/running totals live. #}
+{{ price_map_json|json_script:"price-map" }}
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'menu/js/main.js' %}"></script>
+{% endblock %}

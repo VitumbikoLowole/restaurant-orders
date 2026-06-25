@@ -1,0 +1,21 @@
+{% extends "menu/base.html" %}
+{% block title %}{{ item.name }} · Tavola{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ item.name }}</h1><p>{{ item.category.name }}</p></div>
+  <div>
+    <a class="btn btn-ghost" href="{% url 'menuitem_update' item.pk %}">Edit</a>
+    <a class="btn btn-ghost" href="{% url 'menuitem_list' %}">Back to menu</a>
+  </div>
+</div>
+
+<div class="card" style="max-width:560px">
+  <div class="thumb" style="height:220px;border-radius:8px;{% if item.photo %}background-image:url('{{ item.photo.url }}');background-size:cover;background-position:center;{% else %}background:#efe9df;display:flex;align-items:center;justify-content:center;color:var(--ink-soft){% endif %}">
+    {% if not item.photo %}No photo uploaded{% endif %}
+  </div>
+  <div class="price" style="font-family:'Fraunces',serif;color:var(--paprika);font-size:1.8rem;margin:16px 0 8px">RWF{{ item.price }}</div>
+  {% if item.is_available %}<span class="pill pill-avail">Available</span>{% else %}<span class="pill pill-out">Unavailable</span>{% endif %}
+  <p style="margin-top:14px;color:var(--ink-soft)">{{ item.description|default:"No description." }}</p>
+</div>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "menu/base.html" %}
+{% block title %}Dashboard · Tavola{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Good service starts here</h1>
+    <p>Manage the menu, take orders, and watch the day's sales.</p>
+  </div>
+  <a class="btn btn-primary" href="{% url 'order_create' %}">+ New order</a>
+</div>
+
+<div class="stat-grid">
+  <div class="stat"><div class="num">{{ category_count }}</div><div class="label">Categories</div></div>
+  <div class="stat"><div class="num">{{ item_count }}</div><div class="label">Menu items</div></div>
+  <div class="stat"><div class="num">{{ customer_count }}</div><div class="label">Customers</div></div>
+  <div class="stat"><div class="num">{{ order_count }}</div><div class="label">Orders</div></div>
+</div>
+
+<h2>Jump in</h2>
+<div class="item-grid">
+  <div class="dish"><div class="body"><h3>Browse the menu</h3><p class="desc">Search dishes by name, category, or price range.</p><div class="row"><a class="btn btn-ghost btn-sm" href="{% url 'menuitem_list' %}">Open menu</a></div></div></div>
+  <div class="dish"><div class="body"><h3>Take an order</h3><p class="desc">Pick a customer, add items with quantities — total is automatic.</p><div class="row"><a class="btn btn-ghost btn-sm" href="{% url 'order_create' %}">Place order</a></div></div></div>
+  <div class="dish"><div class="body"><h3>Daily sales</h3><p class="desc">Revenue and order counts grouped by day.</p><div class="row"><a class="btn btn-ghost btn-sm" href="{% url 'daily_report' %}">View report</a></div></div></div>
+</div>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "menu/base.html" %}
+{% block title %}Edit customer · Tavola{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div><h1>Edit customer</h1><p>{{ form.instance }}</p></div>
+</div>
+
+<form method="post" class="card">
+  {% csrf_token %}
+  {% for field in form %}
+    <div class="form-row">
+      <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+      {{ field }}
+      {% if field.errors %}<ul class="errorlist">{% for e in field.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+    </div>
+  {% endfor %}
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">Save</button>
+    <a class="btn btn-ghost" href="{% url 'customer_list' %}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends "menu/base.html" %}
+{% block title %}Daily sales · Tavola{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div><h1>Daily sales</h1><p>Revenue and order counts grouped by calendar day.</p></div>
+</div>
+
+<div class="stat-grid" style="max-width:420px">
+  <div class="stat"><div class="num">RWF{{ today_revenue }}</div><div class="label">Today ({{ today|date:"M j" }})</div></div>
+</div>
+
+{% if rows %}
+<div class="table-wrap" style="max-width:540px">
+  <table>
+    <thead><tr><th>Day</th><th>Orders</th><th>Revenue</th></tr></thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.day|date:"D, M j, Y" }}</td>
+        <td>{{ row.num_orders }}</td>
+        <td><span class="money">RWF{{ row.revenue|default:"0.00" }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card empty">No sales recorded yet.</div>
+{% endif %}
+{% endblock %}

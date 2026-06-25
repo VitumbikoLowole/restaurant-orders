@@ -1,0 +1,32 @@
+{% extends "menu/base.html" %}
+{% block title %}Customers · Tavola{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div><h1>Customers</h1></div>
+</div>
+
+{% if customers %}
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Customer</th><th>Username</th><th>Phone</th><th>Orders</th><th></th></tr></thead>
+    <tbody>
+      {% for cust in customers %}
+      <tr>
+        <td><strong>{{ cust }}</strong></td>
+        <td>{{ cust.user.username }}</td>
+        <td>{{ cust.phone|default:"—" }}</td>
+        <td>{{ cust.num_orders }}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <a class="btn btn-ghost btn-sm" href="{% url 'customer_update' cust.pk %}">Edit</a>
+          <a class="btn btn-danger btn-sm" href="{% url 'customer_delete' cust.pk %}">Delete</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card empty">No customers yet. Register a user to create one automatically.</div>
+{% endif %}
+{% endblock %}

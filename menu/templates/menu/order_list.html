@@ -1,0 +1,46 @@
+{% extends "menu/base.html" %}
+{% block title %}Orders · Tavola{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div><h1>Orders</h1><p>{{ page_obj.paginator.count }} order{{ page_obj.paginator.count|pluralize }} in total.</p></div>
+  <a class="btn btn-primary" href="{% url 'order_create' %}">+ New order</a>
+</div>
+
+{% if orders %}
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>#</th><th>Customer</th><th>Items</th><th>Status</th><th>Total</th><th>Placed</th><th></th></tr></thead>
+    <tbody>
+      {% for order in orders %}
+      <tr>
+        <td>#{{ order.pk }}</td>
+        <td>{{ order.customer }}</td>
+        {# order_items was prefetched, so this count touches no extra query #}
+        <td>{{ order.order_items.all|length }}</td>
+        <td><span class="pill pill-{{ order.status }}">{{ order.get_status_display }}</span></td>
+        <td><span class="money">RWF{{ order.total_price }}</span></td>
+        <td>{{ order.created_at|date:"M j, Y g:i A" }}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <a class="btn btn-ghost btn-sm" href="{% url 'order_detail' order.pk %}">View</a>
+          <a class="btn btn-ghost btn-sm" href="{% url 'order_update' order.pk %}">Edit</a>
+          <a class="btn btn-danger btn-sm" href="{% url 'order_delete' order.pk %}">Delete</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if is_paginated %}
+<div class="pager">
+  {% if page_obj.has_previous %}<a class="step" href="?page={{ page_obj.previous_page_number }}">‹ Prev</a>{% endif %}
+  <span class="current">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+  {% if page_obj.has_next %}<a class="step" href="?page={{ page_obj.next_page_number }}">Next ›</a>{% endif %}
+</div>
+{% endif %}
+
+{% else %}
+<div class="card empty">No orders yet. Place the first one.</div>
+{% endif %}
+{% endblock %}

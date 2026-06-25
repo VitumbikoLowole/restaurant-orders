@@ -1,0 +1,36 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register · Tavola</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'menu/css/style.css' %}">
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="brand">Tavola<small>Menu &amp; Orders</small></div>
+    <h1>Create an account</h1>
+    <p class="sub">A customer profile is created for you automatically.</p>
+
+    <form method="post">
+      {% csrf_token %}
+      {% for field in form %}
+        <div class="form-row">
+          <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+          {% if field.help_text %}<div class="helptext">{{ field.help_text|safe }}</div>{% endif %}
+          {% if field.errors %}<ul class="errorlist">{% for e in field.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+        </div>
+      {% endfor %}
+      <button class="btn btn-primary" type="submit">Create account</button>
+    </form>
+
+    <p class="auth-alt">Already have an account? <a href="{% url 'login' %}">Log in</a></p>
+  </div>
+</div>
+</body>
+</html>

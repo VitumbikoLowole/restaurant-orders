@@ -1,0 +1,32 @@
+{% extends "menu/base.html" %}
+{% block title %}Order #{{ order.pk }} · Tavola{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div><h1>Order #{{ order.pk }}</h1><p>{{ order.customer }} · {{ order.created_at|date:"M j, Y g:i A" }}</p></div>
+  <div>
+    <span class="pill pill-{{ order.status }}">{{ order.get_status_display }}</span>
+    <a class="btn btn-ghost" href="{% url 'order_update' order.pk %}">Edit</a>
+  </div>
+</div>
+
+<div class="table-wrap" style="max-width:640px">
+  <table>
+    <thead><tr><th>Item</th><th>Unit price</th><th>Qty</th><th>Line total</th></tr></thead>
+    <tbody>
+      {% for line in order.order_items.all %}
+      <tr>
+        <td>{{ line.menu_item.name }}</td>
+        <td>RWF{{ line.unit_price }}</td>
+        <td>{{ line.quantity }}</td>
+        <td><span class="money">RWF{{ line.line_total }}</span></td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4" class="empty">No items on this order.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="order-total" style="max-width:640px">Order total: <span>RWF{{ order.total_price }}</span></div>
+{% endblock %}
