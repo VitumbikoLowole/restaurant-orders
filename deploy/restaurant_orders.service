@@ -1,0 +1,17 @@
+[Unit]
+Descriptive=Gunicorn daemon for restaurant_orders
+Requires=restaurant_orders.socket
+After=network.target
+
+[Service]
+User=ubuntu
+Group=www-data
+WorkingDirectory=/home/ubuntu/restaurant_orders
+ExecStart=/home/ubuntu/restaurant_orders/.venv/bin/gunicorn \
+--access-logfile - \
+--workers 3 \
+--bind unix:/run/restaurant_orders.sock \
+restaurant_orders.wsgi:application
+
+[Install]
+WantedBy=multi-user.target

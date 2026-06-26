@@ -1,0 +1,8 @@
+[Unit]
+Description=Gunicorn socket for restaurant_orders
+
+[Socket]
+ListenStream=/run/restaurant_orders.sock
+
+[Install]
+WantedBy=sockets.target
