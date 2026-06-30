@@ -3,16 +3,32 @@
 
 {% block content %}
 <div class="page-head">
-  <div><h1>Order #{{ order.pk }}</h1><p>{{ order.customer }} · {{ order.created_at|date:"M j, Y g:i A" }}</p></div>
+  <div>
+    <h1>Order #{{ order.pk }}</h1>
+    <p>
+      {{ order.customer_name|default:order.customer|default:"Walk-in" }}
+      {% if order.table %} · {{ order.table }}{% endif %}
+      · {{ order.created_at|date:"M j, Y g:i A" }}
+    </p>
+  </div>
   <div>
     <span class="pill pill-{{ order.status }}">{{ order.get_status_display }}</span>
-    <a class="btn btn-ghost" href="{% url 'order_update' order.pk %}">Edit</a>
+    {% if user_is_staff %}
+      <a class="btn btn-ghost" href="{% url 'order_update' order.pk %}">Edit</a>
+      <a class="btn btn-danger" href="{% url 'order_delete' order.pk %}">Delete</a>
+    {% endif %}
   </div>
 </div>
 
+{% if order.special_instructions %}
+<div class="card" style="max-width:640px;margin-bottom:16px">
+  <strong>Special instructions:</strong> {{ order.special_instructions }}
+</div>
+{% endif %}
+
 <div class="table-wrap" style="max-width:640px">
   <table>
-    <thead><tr><th>Item</th><th>Unit price</th><th>Qty</th><th>Line total</th></tr></thead>
+    <thead><tr><th>Item</th><th>Unit price</th><th>Qty</th><th>Line total</th><th>Notes</th></tr></thead>
     <tbody>
       {% for line in order.order_items.all %}
       <tr>
@@ -20,9 +36,10 @@
         <td>RWF{{ line.unit_price }}</td>
         <td>{{ line.quantity }}</td>
         <td><span class="money">RWF{{ line.line_total }}</span></td>
+        <td>{{ line.special_requests|default:"—" }}</td>
       </tr>
       {% empty %}
-      <tr><td colspan="4" class="empty">No items on this order.</td></tr>
+      <tr><td colspan="5" class="empty">No items on this order.</td></tr>
       {% endfor %}
     </tbody>
   </table>

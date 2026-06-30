@@ -1,0 +1,45 @@
+{% extends "menu/base.html" %}
+{% block title %}Tables · Tavola{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div><h1>Tables</h1><p>{{ tables|length }} table{{ tables|length|pluralize }} configured.</p></div>
+  <a class="btn btn-primary" href="{% url 'table_create' %}">+ Add table</a>
+</div>
+
+{% if tables %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Table No.</th>
+        <th>Capacity</th>
+        <th>Status</th>
+        <th>Orders</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in tables %}
+      <tr>
+        <td>{{ forloop.counter }}</td>
+        <td><strong>Table {{ t.table_number }}</strong></td>
+        <td>{{ t.capacity }} seats</td>
+        <td>
+          <span class="pill pill-{{ t.table_status }}">{{ t.get_table_status_display }}</span>
+        </td>
+        <td>{{ t.num_orders }}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <a class="btn btn-ghost btn-sm" href="{% url 'table_update' t.pk %}">Edit</a>
+          <a class="btn btn-danger btn-sm" href="{% url 'table_delete' t.pk %}">Delete</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="card empty">No tables configured yet. Add the first one.</div>
+{% endif %}
+{% endblock %}

@@ -7,10 +7,6 @@ from django.utils import timezone
 
 
 class MenuCategory(models.Model):
-    """
-    A grouping of menu items, e.g. "Starters", "Mains", "Drinks".
-    This is the "1" side of the Category -> Items one-to-many relationship.
-    """
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -23,21 +19,10 @@ class MenuCategory(models.Model):
         return self.name
 
     def item_count(self):
-        # self.items is the reverse accessor created by related_name="items"
-        # on MenuItem.category. It lets us count without writing any SQL.
         return self.items.count()
 
 
 class MenuItem(models.Model):
-    """
-    A single dish or drink.
-
-    RELATIONSHIP: ForeignKey to MenuCategory.
-    Many items belong to one category (many-to-one).
-    related_name="items" creates category.items as a reverse accessor,
-    so from any category you can call category.items.all() to get its dishes.
-    on_delete=PROTECT means you cannot delete a category that still has items.
-    """
     category = models.ForeignKey(
         MenuCategory,
         on_delete=models.PROTECT,
@@ -46,6 +31,9 @@ class MenuItem(models.Model):
     name = models.CharField(max_length=150)
     description = models.TextField(blank=True)
     price = models.DecimalField(max_digits=8, decimal_places=2)
+    preparation_time = models.PositiveIntegerField(
+        default=15, help_text="Estimated preparation time in minutes"
+    )
     photo = models.ImageField(upload_to="menu_items/", blank=True, null=True)
     is_available = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -58,16 +46,30 @@ class MenuItem(models.Model):
         return f"{self.name} (RWF{self.price})"
 
 
-class Customer(models.Model):
-    """
-    A person who places orders.
+class Table(models.Model):
+    class Status(models.TextChoices):
+        AVAILABLE = "available", "Available"
+        OCCUPIED = "occupied", "Occupied"
+        RESERVED = "reserved", "Reserved"
 
-    RELATIONSHIP: OneToOneField to auth.User.
-    One user has exactly one customer profile (and vice versa).
-    related_name="customer" means: from any user, request.user.customer
-    gives you the profile. From any customer, customer.user gives the login.
-    on_delete=CASCADE means deleting the user deletes the profile too.
-    """
+    table_number = models.PositiveIntegerField(unique=True)
+    capacity = models.PositiveIntegerField()
+    table_status = models.CharField(
+        max_length=10, choices=Status.choices, default=Status.AVAILABLE
+    )
+
+    class Meta:
+        ordering = ["table_number"]
+
+    def __str__(self):
+        return f"Table {self.table_number} (seats {self.capacity})"
+
+
+class Customer(models.Model):
+    STAFF = "staff"
+    CUSTOMER = "customer"
+    ROLE_CHOICES = [(STAFF, "Staff"), (CUSTOMER, "Customer")]
+
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -75,6 +77,7 @@ class Customer(models.Model):
     )
     phone = models.CharField(max_length=30, blank=True)
     address = models.TextField(blank=True)
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default=CUSTOMER)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -84,32 +87,35 @@ class Customer(models.Model):
         full = self.user.get_full_name()
         return full or self.user.username
 
+    @property
+    def is_staff_member(self):
+        return self.role == self.STAFF or self.user.is_staff or self.user.is_superuser
+
 
 class Order(models.Model):
-    """
-    One customer order. May contain many menu items.
-
-    RELATIONSHIP 1: ForeignKey to Customer.
-    One customer, many orders. related_name="orders" means:
-    customer.orders.all() gives every order that customer placed.
-
-    RELATIONSHIP 2: ManyToManyField to MenuItem, THROUGH OrderItem.
-    An order has many items; an item appears in many orders.
-    We route through OrderItem (our own join model) so each link can
-    store quantity and the price at the time of ordering. A plain
-    ManyToManyField cannot store those extra columns.
-    """
-
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
-        PAID = "paid", "Paid"
-        CANCELLED = "cancelled", "Cancelled"
+        PREPARING = "preparing", "Preparing"
+        READY = "ready", "Ready"
+        SERVED = "served", "Served"
+        COMPLETED = "completed", "Completed"
 
     customer = models.ForeignKey(
         Customer,
         on_delete=models.PROTECT,
         related_name="orders",
+        null=True,
+        blank=True,
     )
+    table = models.ForeignKey(
+        Table,
+        on_delete=models.SET_NULL,
+        related_name="orders",
+        null=True,
+        blank=True,
+    )
+    customer_name = models.CharField(max_length=150, blank=True)
+    special_instructions = models.TextField(blank=True)
     items = models.ManyToManyField(
         MenuItem,
         through="OrderItem",
@@ -119,8 +125,6 @@ class Order(models.Model):
     status = models.CharField(
         max_length=10, choices=Status.choices, default=Status.PENDING
     )
-    # Cached total so list views don't re-aggregate every time.
-    # Kept up to date by recalc_total() called after every save.
     total_price = models.DecimalField(
         max_digits=10, decimal_places=2, default=Decimal("0.00")
     )
@@ -130,13 +134,10 @@ class Order(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"Order #{self.pk} - {self.customer} - ${self.total_price}"
+        name = self.customer_name or str(self.customer) if self.customer else "Walk-in"
+        return f"Order #{self.pk} - {name} - RWF{self.total_price}"
 
     def recalc_total(self, save=True):
-        """
-        SUM(quantity * unit_price) across all lines for this order.
-        F() keeps the multiplication inside the database (one query, no loop).
-        """
         aggregate = self.order_items.aggregate(
             total=Sum(F("quantity") * F("unit_price"))
         )
@@ -147,21 +148,6 @@ class Order(models.Model):
 
 
 class OrderItem(models.Model):
-    """
-    The join model between Order and MenuItem (the "through" table).
-
-    Each row = one line on a receipt: "2 x Skol Malt @ RWF 2,000".
-    It carries:
-      - order      FK to the parent order
-      - menu_item  FK to the dish being ordered
-      - quantity   how many
-      - unit_price a SNAPSHOT of the price at order time, so that changing
-                   the menu price later does not alter old receipts.
-
-    Because Order.items uses through=OrderItem, you NEVER call
-    order.items.add(dish). Instead you create an OrderItem row directly —
-    that IS the many-to-many link, plus the extra data.
-    """
     order = models.ForeignKey(
         Order,
         on_delete=models.CASCADE,
@@ -174,6 +160,7 @@ class OrderItem(models.Model):
     )
     quantity = models.PositiveIntegerField(default=1)
     unit_price = models.DecimalField(max_digits=8, decimal_places=2)
+    special_requests = models.TextField(blank=True)
 
     class Meta:
         unique_together = [("order", "menu_item")]

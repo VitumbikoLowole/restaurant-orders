@@ -1,75 +1,134 @@
 """
 Views for the menu app.
 
-This is the layer that turns an HTTP request into a database operation and
-a rendered page. Each view is annotated with the relationship work it does
-and, where relevant, the SQL-shaping methods (select_related /
-prefetch_related) used to keep list pages efficient.
+Role model:
+  - Staff  : is_staff / is_superuser on auth.User  OR  customer.role == 'staff'
+  - Customer: everyone else (authenticated regular users)
 
-Layout:
-  * Home / dashboard
-  * MenuCategory CRUD
-  * MenuItem    CRUD  (+ Q-object search, photo upload)
-  * Customer    CRUD
-  * Order       CRUD  (+ formset-based placement, automatic totals)
-  * Daily sales report
+Access rules:
+  MenuCategory  : List = all;  Create/Update/Delete = Staff only
+  MenuItem      : List/Detail = all;  Create/Update/Delete = Staff only
+  Table         : All CRUD = Staff only
+  Customer      : List/Create/Delete = Staff only;  Update = staff OR own profile
+  Order         : List/Detail/Create = authenticated;
+                  customers see only their own orders;
+                  Update/Delete = Staff only
+  Reports       : Staff only
 """
 
 from decimal import Decimal
+from functools import wraps
 
 from django.contrib import messages
-from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
 from django.db.models import Q, Sum, Count, F
 from django.db.models.functions import TruncDate
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse_lazy
 from django.utils import timezone
+from django.views import View
 from django.views.generic import (
     ListView, DetailView, CreateView, UpdateView, DeleteView,
 )
 
-from .models import MenuCategory, MenuItem, Customer, Order, OrderItem
+from .models import MenuCategory, MenuItem, Table, Customer, Order, OrderItem
 from .forms import (
-    MenuCategoryForm, MenuItemForm, CustomerForm, OrderForm,
-    OrderItemFormSet, MenuItemSearchForm,
+    MenuCategoryForm, MenuItemForm, TableForm,
+    CustomerForm, CustomerProfileForm, CustomerCreateForm,
+    OrderForm, OrderItemFormSet, MenuItemSearchForm,
 )
 
+User = get_user_model()
+
 
 # ==========================================================================
-# Home
+# Role helpers
 # ==========================================================================
+
+def is_staff_member(user):
+    """True when the user holds Staff privileges."""
+    if not user.is_authenticated:
+        return False
+    if user.is_staff or user.is_superuser:
+        return True
+    try:
+        return user.customer.role == Customer.STAFF
+    except Customer.DoesNotExist:
+        return False
+
+
+class StaffRequiredMixin(LoginRequiredMixin):
+    """CBV mixin: restrict view to Staff role."""
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return self.handle_no_permission()
+        if not is_staff_member(request.user):
+            messages.error(request, "Staff access required.")
+            return redirect("home")
+        return super().dispatch(request, *args, **kwargs)
+
+
+def staff_required(view_func):
+    """FBV decorator: restrict view to Staff role."""
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            from django.conf import settings as django_settings
+            return redirect(f"{django_settings.LOGIN_URL}?next={request.path}")
+        if not is_staff_member(request.user):
+            messages.error(request, "Staff access required.")
+            return redirect("home")
+        return view_func(request, *args, **kwargs)
+    return wrapper
+
+
+# ==========================================================================
+# Home / dashboard
+# ==========================================================================
+
 def home(request):
-    """
-    Landing page with a few headline counts. Each count is one cheap
-    aggregate query (SELECT COUNT(*)), so the dashboard stays light.
-    """
-    context = {
-        "category_count": MenuCategory.objects.count(),
-        "item_count": MenuItem.objects.count(),
-        "customer_count": Customer.objects.count(),
-        "order_count": Order.objects.count(),
-    }
+    if not request.user.is_authenticated:
+        return render(request, "menu/home.html", {})
+
+    if is_staff_member(request.user):
+        context = {
+            "category_count": MenuCategory.objects.count(),
+            "item_count": MenuItem.objects.count(),
+            "table_count": Table.objects.count(),
+            "customer_count": Customer.objects.count(),
+            "order_count": Order.objects.count(),
+            "pending_count": Order.objects.filter(status=Order.Status.PENDING).count(),
+        }
+    else:
+        try:
+            my_orders = Order.objects.filter(customer=request.user.customer)
+        except Customer.DoesNotExist:
+            my_orders = Order.objects.none()
+        context = {
+            "item_count": MenuItem.objects.filter(is_available=True).count(),
+            "my_order_count": my_orders.count(),
+            "my_pending_count": my_orders.filter(status=Order.Status.PENDING).count(),
+        }
     return render(request, "menu/home.html", context)
 
 
 # ==========================================================================
-# MenuCategory CRUD
+# MenuCategory CRUD  (Staff only for CUD)
 # ==========================================================================
+
 class CategoryListView(ListView):
     model = MenuCategory
     template_name = "menu/category_list.html"
     context_object_name = "categories"
 
     def get_queryset(self):
-        # annotate() adds a COUNT of related items per category in ONE query
-        # (a LEFT JOIN + GROUP BY), instead of N extra COUNT queries in the
-        # template. This is the relationship being aggregated at the DB level.
         return MenuCategory.objects.annotate(num_items=Count("items"))
 
 
-class CategoryCreateView(LoginRequiredMixin, CreateView):
+class CategoryCreateView(StaffRequiredMixin, CreateView):
     model = MenuCategory
     form_class = MenuCategoryForm
     template_name = "menu/category_form.html"
@@ -80,22 +139,23 @@ class CategoryCreateView(LoginRequiredMixin, CreateView):
         return super().form_valid(form)
 
 
-class CategoryUpdateView(LoginRequiredMixin, UpdateView):
+class CategoryUpdateView(StaffRequiredMixin, UpdateView):
     model = MenuCategory
     form_class = MenuCategoryForm
     template_name = "menu/category_form.html"
     success_url = reverse_lazy("category_list")
 
+    def form_valid(self, form):
+        messages.success(self.request, "Category updated.")
+        return super().form_valid(form)
 
-class CategoryDeleteView(LoginRequiredMixin, DeleteView):
+
+class CategoryDeleteView(StaffRequiredMixin, DeleteView):
     model = MenuCategory
     template_name = "menu/confirm_delete.html"
     success_url = reverse_lazy("category_list")
 
     def post(self, request, *args, **kwargs):
-        # MenuItem.category uses on_delete=PROTECT, so deleting a category
-        # that still has items raises ProtectedError. We catch it and turn
-        # it into a friendly message instead of a 500 page.
         from django.db.models import ProtectedError
         self.object = self.get_object()
         try:
@@ -112,8 +172,9 @@ class CategoryDeleteView(LoginRequiredMixin, DeleteView):
 
 
 # ==========================================================================
-# MenuItem CRUD  (+ search)
+# MenuItem CRUD  (List/Detail = all; CUD = Staff only)
 # ==========================================================================
+
 class MenuItemListView(ListView):
     model = MenuItem
     template_name = "menu/menuitem_list.html"
@@ -121,55 +182,29 @@ class MenuItemListView(ListView):
     paginate_by = 12
 
     def get_queryset(self):
-        """
-        Two jobs here:
-
-        1) select_related("category"): MenuItem.category is a ForeignKey
-           (many items -> one category). Without select_related, rendering
-           `item.category.name` for every row fires one extra query per row
-           (the classic N+1 problem). select_related turns it into a single
-           SQL JOIN, so the whole page is one query for items+categories.
-
-        2) Search via Q objects. We build a Q() expression from whatever
-           filter fields were submitted and AND them together. Each branch
-           is an independent, optional criterion -- this is the brief's
-           "at least 2 filter criteria using Q objects":
-              - keyword matches name OR description  (Q | Q)
-              - category exact match
-              - price >= min_price
-              - price <= max_price
-        """
         qs = MenuItem.objects.select_related("category")
-
         self.search_form = MenuItemSearchForm(self.request.GET or None)
         if self.search_form.is_valid():
             cd = self.search_form.cleaned_data
-
             keyword = cd.get("q")
             if keyword:
-                # OR across two columns inside a single Q expression.
                 qs = qs.filter(
                     Q(name__icontains=keyword) | Q(description__icontains=keyword)
                 )
-
             category = cd.get("category")
             if category:
                 qs = qs.filter(Q(category=category))
-
             min_price = cd.get("min_price")
             if min_price is not None:
                 qs = qs.filter(Q(price__gte=min_price))
-
             max_price = cd.get("max_price")
             if max_price is not None:
                 qs = qs.filter(Q(price__lte=max_price))
-
         return qs
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx["search_form"] = self.search_form
-        # Preserve the querystring across pagination links.
         params = self.request.GET.copy()
         params.pop("page", None)
         ctx["querystring"] = params.urlencode()
@@ -185,7 +220,7 @@ class MenuItemDetailView(DetailView):
         return MenuItem.objects.select_related("category")
 
 
-class MenuItemCreateView(LoginRequiredMixin, CreateView):
+class MenuItemCreateView(StaffRequiredMixin, CreateView):
     model = MenuItem
     form_class = MenuItemForm
     template_name = "menu/menuitem_form.html"
@@ -196,68 +231,172 @@ class MenuItemCreateView(LoginRequiredMixin, CreateView):
         return super().form_valid(form)
 
 
-class MenuItemUpdateView(LoginRequiredMixin, UpdateView):
+class MenuItemUpdateView(StaffRequiredMixin, UpdateView):
     model = MenuItem
     form_class = MenuItemForm
     template_name = "menu/menuitem_form.html"
     success_url = reverse_lazy("menuitem_list")
 
+    def form_valid(self, form):
+        messages.success(self.request, "Menu item updated.")
+        return super().form_valid(form)
 
-class MenuItemDeleteView(LoginRequiredMixin, DeleteView):
+
+class MenuItemDeleteView(StaffRequiredMixin, DeleteView):
     model = MenuItem
     template_name = "menu/confirm_delete.html"
     success_url = reverse_lazy("menuitem_list")
 
+    def post(self, request, *args, **kwargs):
+        messages.success(request, "Menu item deleted.")
+        return super().post(request, *args, **kwargs)
+
+
+# ==========================================================================
+# Table CRUD  (Staff only)
+# ==========================================================================
+
+class TableListView(StaffRequiredMixin, ListView):
+    model = Table
+    template_name = "menu/table_list.html"
+    context_object_name = "tables"
+
+    def get_queryset(self):
+        return Table.objects.annotate(num_orders=Count("orders"))
+
+
+class TableCreateView(StaffRequiredMixin, CreateView):
+    model = Table
+    form_class = TableForm
+    template_name = "menu/table_form.html"
+    success_url = reverse_lazy("table_list")
+
+    def form_valid(self, form):
+        messages.success(self.request, f"Table {form.instance.table_number} added.")
+        return super().form_valid(form)
+
+
+class TableUpdateView(StaffRequiredMixin, UpdateView):
+    model = Table
+    form_class = TableForm
+    template_name = "menu/table_form.html"
+    success_url = reverse_lazy("table_list")
+
+    def form_valid(self, form):
+        messages.success(self.request, f"Table {form.instance.table_number} updated.")
+        return super().form_valid(form)
+
+
+class TableDeleteView(StaffRequiredMixin, DeleteView):
+    model = Table
+    template_name = "menu/confirm_delete.html"
+    success_url = reverse_lazy("table_list")
+
+    def post(self, request, *args, **kwargs):
+        messages.success(request, "Table deleted.")
+        return super().post(request, *args, **kwargs)
+
 
 # ==========================================================================
 # Customer CRUD
+#   List/Create/Delete = Staff only
+#   Update = Staff OR own profile
 # ==========================================================================
-class CustomerListView(LoginRequiredMixin, ListView):
+
+class CustomerListView(StaffRequiredMixin, ListView):
     model = Customer
     template_name = "menu/customer_list.html"
     context_object_name = "customers"
 
     def get_queryset(self):
-        # Customer.user is a OneToOne (a FK under the hood), so the same
-        # N+1 logic applies: select_related("user") joins the auth_user row
-        # in once. annotate() also counts each customer's orders in-query.
         return (
             Customer.objects.select_related("user")
             .annotate(num_orders=Count("orders"))
         )
 
 
+class CustomerCreateView(StaffRequiredMixin, View):
+    template_name = "menu/customer_create_form.html"
+
+    def get(self, request):
+        return render(request, self.template_name, {"form": CustomerCreateForm()})
+
+    def post(self, request):
+        form = CustomerCreateForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            user = User.objects.create_user(
+                username=cd["username"],
+                first_name=cd.get("first_name", ""),
+                last_name=cd.get("last_name", ""),
+                email=cd.get("email", ""),
+                password=cd["password1"],
+            )
+            # Signal already created the Customer; update extra fields.
+            customer = user.customer
+            customer.phone = cd.get("phone", "")
+            customer.address = cd.get("address", "")
+            customer.role = cd["role"]
+            customer.save()
+            messages.success(request, f"Account created for {user.username}.")
+            return redirect("customer_list")
+        return render(request, self.template_name, {"form": form})
+
+
 class CustomerUpdateView(LoginRequiredMixin, UpdateView):
     model = Customer
-    form_class = CustomerForm
     template_name = "menu/customer_form.html"
     success_url = reverse_lazy("customer_list")
 
+    def get_form_class(self):
+        # Staff can change role; customers editing themselves cannot.
+        if is_staff_member(self.request.user):
+            return CustomerForm
+        return CustomerProfileForm
 
-class CustomerDeleteView(LoginRequiredMixin, DeleteView):
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return self.handle_no_permission()
+        obj = self.get_object()
+        if not is_staff_member(request.user) and obj.user != request.user:
+            messages.error(request, "You can only edit your own profile.")
+            return redirect("home")
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_success_url(self):
+        if is_staff_member(self.request.user):
+            return reverse_lazy("customer_list")
+        return reverse_lazy("home")
+
+    def form_valid(self, form):
+        messages.success(self.request, "Profile updated.")
+        return super().form_valid(form)
+
+
+class CustomerDeleteView(StaffRequiredMixin, DeleteView):
     model = Customer
     template_name = "menu/confirm_delete.html"
     success_url = reverse_lazy("customer_list")
 
+    def post(self, request, *args, **kwargs):
+        messages.success(request, "Customer deleted.")
+        return super().post(request, *args, **kwargs)
+
 
 # ==========================================================================
-# Order CRUD  (+ placement with line items and automatic total)
+# Order CRUD
+#   List/Detail/Create = authenticated (customers see own orders only)
+#   Update/Delete = Staff only
 # ==========================================================================
+
 def _price_map():
-    """
-    Build {menu_item_id: "price"} for every available item.
-
-    The order form's JavaScript reads this map to compute line totals and a
-    running total live, before the form is even submitted. It is only a
-    convenience preview -- the authoritative total is still recomputed on
-    the server from the saved OrderItem rows.
-    """
     return {
         str(pk): str(price)
         for pk, price in MenuItem.objects.filter(is_available=True).values_list(
             "id", "price"
         )
     }
+
 
 class OrderListView(LoginRequiredMixin, ListView):
     model = Order
@@ -266,21 +405,16 @@ class OrderListView(LoginRequiredMixin, ListView):
     paginate_by = 15
 
     def get_queryset(self):
-        """
-        Orders touch three related tables, so we combine both optimisation
-        tools:
-          * select_related("customer", "customer__user"): follow the
-            many-to-one FK chain Order -> Customer -> User in the same JOIN.
-          * prefetch_related("order_items__menu_item"): the order lines are
-            a reverse FK / many side, which select_related cannot do in one
-            row. prefetch_related runs a second query that loads ALL lines
-            for ALL listed orders at once and stitches them in Python,
-            turning a potential N+1 into exactly 2 queries total.
-        """
-        return (
-            Order.objects.select_related("customer", "customer__user")
+        qs = (
+            Order.objects.select_related("customer", "customer__user", "table")
             .prefetch_related("order_items__menu_item")
         )
+        if not is_staff_member(self.request.user):
+            try:
+                qs = qs.filter(customer=self.request.user.customer)
+            except Customer.DoesNotExist:
+                qs = qs.none()
+        return qs
 
 
 class OrderDetailView(LoginRequiredMixin, DetailView):
@@ -289,51 +423,58 @@ class OrderDetailView(LoginRequiredMixin, DetailView):
     context_object_name = "order"
 
     def get_queryset(self):
-        return Order.objects.select_related(
-            "customer", "customer__user"
+        qs = Order.objects.select_related(
+            "customer", "customer__user", "table"
         ).prefetch_related("order_items__menu_item")
+        if not is_staff_member(self.request.user):
+            try:
+                qs = qs.filter(customer=self.request.user.customer)
+            except Customer.DoesNotExist:
+                qs = qs.none()
+        return qs
 
 
 @login_required
 def order_create(request):
-    """
-    Place an order: choose a customer + status (OrderForm) and add one or
-    more lines (OrderItemFormSet). This is where the many-to-many through
-    OrderItem is actually written, and where the total is computed.
+    user_is_staff = is_staff_member(request.user)
 
-    Flow:
-      1. Bind both the parent form and the inline formset to POST data
-         (and request.FILES is unused here; no uploads on this form).
-      2. Validate both. If valid, save inside a single DB transaction so a
-         half-written order can never be committed.
-      3. For each line, snapshot the chosen item's current price into
-         unit_price (so historical totals are stable), then save the line.
-      4. Call order.recalc_total() -> the SUM(quantity*unit_price) query
-         that fills total_price automatically.
-    """
     if request.method == "POST":
-        form = OrderForm(request.POST)
+        form = OrderForm(request.POST, is_staff=user_is_staff)
         formset = OrderItemFormSet(request.POST)
         if form.is_valid() and formset.is_valid():
             with transaction.atomic():
-                order = form.save()
-                # Bind the formset's children to the freshly-created order.
+                order = form.save(commit=False)
+                if not user_is_staff:
+                    try:
+                        order.customer = request.user.customer
+                        if not order.customer_name:
+                            order.customer_name = str(request.user.customer)
+                    except Customer.DoesNotExist:
+                        pass
+                # Auto-fill customer_name from linked customer if blank
+                if order.customer and not order.customer_name:
+                    order.customer_name = str(order.customer)
+                order.save()
                 formset.instance = order
                 lines = formset.save(commit=False)
                 for line in lines:
-                    # Price snapshot taken from the selected MenuItem.
                     line.unit_price = line.menu_item.price
                     line.save()
-                # Honour any rows the user marked for deletion.
                 for obj in formset.deleted_objects:
                     obj.delete()
-                order.recalc_total()  # automatic total
+                order.recalc_total()
             messages.success(
                 request, f"Order #{order.pk} placed. Total RWF{order.total_price}."
             )
             return redirect("order_detail", pk=order.pk)
     else:
-        form = OrderForm()
+        initial = {}
+        if not user_is_staff:
+            try:
+                initial["customer_name"] = str(request.user.customer)
+            except Customer.DoesNotExist:
+                pass
+        form = OrderForm(is_staff=user_is_staff, initial=initial)
         formset = OrderItemFormSet()
 
     return render(
@@ -344,20 +485,23 @@ def order_create(request):
             "formset": formset,
             "is_create": True,
             "price_map_json": _price_map(),
+            "user_is_staff": user_is_staff,
         },
     )
 
 
-@login_required
+@staff_required
 def order_update(request, pk):
-    """Edit an existing order's header and lines, then recompute its total."""
     order = get_object_or_404(Order, pk=pk)
     if request.method == "POST":
-        form = OrderForm(request.POST, instance=order)
+        form = OrderForm(request.POST, instance=order, is_staff=True)
         formset = OrderItemFormSet(request.POST, instance=order)
         if form.is_valid() and formset.is_valid():
             with transaction.atomic():
-                order = form.save()
+                order = form.save(commit=False)
+                if order.customer and not order.customer_name:
+                    order.customer_name = str(order.customer)
+                order.save()
                 lines = formset.save(commit=False)
                 for line in lines:
                     if line.unit_price is None:
@@ -369,7 +513,7 @@ def order_update(request, pk):
             messages.success(request, f"Order #{order.pk} updated.")
             return redirect("order_detail", pk=order.pk)
     else:
-        form = OrderForm(instance=order)
+        form = OrderForm(instance=order, is_staff=True)
         formset = OrderItemFormSet(instance=order)
 
     return render(
@@ -381,40 +525,29 @@ def order_update(request, pk):
             "order": order,
             "is_create": False,
             "price_map_json": _price_map(),
+            "user_is_staff": True,
         },
     )
 
 
-class OrderDeleteView(LoginRequiredMixin, DeleteView):
+class OrderDeleteView(StaffRequiredMixin, DeleteView):
     model = Order
     template_name = "menu/confirm_delete.html"
     success_url = reverse_lazy("order_list")
 
+    def post(self, request, *args, **kwargs):
+        messages.success(request, "Order deleted.")
+        return super().post(request, *args, **kwargs)
+
 
 # ==========================================================================
-# Daily sales report
+# Daily sales report  (Staff only)
 # ==========================================================================
-@login_required
+
+@staff_required
 def daily_sales_report(request):
-    """
-    "Total per day" report.
-
-    We group every PAID/PENDING order by its calendar date and sum the
-    cached total_price column. TruncDate collapses the timestamp to a date
-    so GROUP BY buckets by day:
-
-        SELECT DATE(created_at) AS day,
-               COUNT(*)          AS num_orders,
-               SUM(total_price)  AS revenue
-        FROM menu_order
-        GROUP BY DATE(created_at)
-        ORDER BY day DESC;
-
-    The result is a queryset of dict-like rows the template renders as a
-    table. We also compute today's revenue separately for the headline.
-    """
     rows = (
-        Order.objects.exclude(status=Order.Status.CANCELLED)
+        Order.objects.exclude(status=Order.Status.COMPLETED)
         .annotate(day=TruncDate("created_at"))
         .values("day")
         .annotate(num_orders=Count("id"), revenue=Sum("total_price"))
@@ -424,7 +557,7 @@ def daily_sales_report(request):
     today = timezone.localdate()
     today_revenue = (
         Order.objects.filter(created_at__date=today)
-        .exclude(status=Order.Status.CANCELLED)
+        .exclude(status=Order.Status.COMPLETED)
         .aggregate(total=Sum("total_price"))["total"]
         or Decimal("0.00")
     )

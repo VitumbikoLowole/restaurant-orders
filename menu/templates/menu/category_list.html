@@ -4,29 +4,33 @@
 {% block content %}
 <div class="page-head">
   <div><h1>Categories</h1></div>
-  <a class="btn btn-primary" href="{% url 'category_create' %}">+ Add category</a>
+  {% if user_is_staff %}
+    <a class="btn btn-primary" href="{% url 'category_create' %}">+ Add category</a>
+  {% endif %}
 </div>
 
 {% if categories %}
 <div class="table-wrap">
   <table>
-    <thead><tr><th>Name</th><th>Description</th><th>Items</th><th></th></tr></thead>
+    <thead><tr><th>Name</th><th>Description</th><th>Items</th>{% if user_is_staff %}<th></th>{% endif %}</tr></thead>
     <tbody>
       {% for c in categories %}
       <tr>
         <td><strong>{{ c.name }}</strong></td>
         <td>{{ c.description|default:"—"|truncatewords:12 }}</td>
         <td>{{ c.num_items }}</td>
+        {% if user_is_staff %}
         <td style="text-align:right;white-space:nowrap">
           <a class="btn btn-ghost btn-sm" href="{% url 'category_update' c.pk %}">Edit</a>
           <a class="btn btn-danger btn-sm" href="{% url 'category_delete' c.pk %}">Delete</a>
         </td>
+        {% endif %}
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
 {% else %}
-<div class="card empty">No categories yet. Add one to start building the menu.</div>
+<div class="card empty">No categories yet. {% if user_is_staff %}Add one to start building the menu.{% endif %}</div>
 {% endif %}
 {% endblock %}

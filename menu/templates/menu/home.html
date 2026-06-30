@@ -2,10 +2,27 @@
 {% block title %}Dashboard · Tavola{% endblock %}
 
 {% block content %}
+{% if not user.is_authenticated %}
+<div class="page-head">
+  <div>
+    <h1>Welcome to Tambala Kitchen</h1>
+    <p>Browse our menu or sign in to place an order.</p>
+  </div>
+  <div>
+    <a class="btn btn-primary" href="{% url 'login' %}">Log in</a>
+    <a class="btn btn-ghost" href="{% url 'register' %}">Register</a>
+  </div>
+</div>
+<div class="item-grid">
+  <div class="dish"><div class="body"><h3>Browse the menu</h3><p class="desc">See what's on offer today.</p><div class="row"><a class="btn btn-ghost btn-sm" href="{% url 'menuitem_list' %}">View menu</a></div></div></div>
+</div>
+
+{% elif user_is_staff %}
+{# ── STAFF DASHBOARD ── #}
 <div class="page-head">
   <div>
     <h1>Good service starts here</h1>
-    <p>Manage the menu, take orders, and watch the day's sales.</p>
+    <p>Manage the menu, tables, orders, and customers.</p>
   </div>
   <a class="btn btn-primary" href="{% url 'order_create' %}">+ New order</a>
 </div>
@@ -13,14 +30,41 @@
 <div class="stat-grid">
   <div class="stat"><div class="num">{{ category_count }}</div><div class="label">Categories</div></div>
   <div class="stat"><div class="num">{{ item_count }}</div><div class="label">Menu items</div></div>
+  <div class="stat"><div class="num">{{ table_count }}</div><div class="label">Tables</div></div>
   <div class="stat"><div class="num">{{ customer_count }}</div><div class="label">Customers</div></div>
-  <div class="stat"><div class="num">{{ order_count }}</div><div class="label">Orders</div></div>
+  <div class="stat"><div class="num">{{ order_count }}</div><div class="label">Total orders</div></div>
+  <div class="stat"><div class="num">{{ pending_count }}</div><div class="label">Pending now</div></div>
 </div>
 
-<h2>Jump in</h2>
+<h2>Quick actions</h2>
 <div class="item-grid">
-  <div class="dish"><div class="body"><h3>Browse the menu</h3><p class="desc">Search dishes by name, category, or price range.</p><div class="row"><a class="btn btn-ghost btn-sm" href="{% url 'menuitem_list' %}">Open menu</a></div></div></div>
-  <div class="dish"><div class="body"><h3>Take an order</h3><p class="desc">Pick a customer, add items with quantities — total is automatic.</p><div class="row"><a class="btn btn-ghost btn-sm" href="{% url 'order_create' %}">Place order</a></div></div></div>
+  <div class="dish"><div class="body"><h3>Take an order</h3><p class="desc">Pick a customer, add items, total is automatic.</p><div class="row"><a class="btn btn-ghost btn-sm" href="{% url 'order_create' %}">Place order</a></div></div></div>
+  <div class="dish"><div class="body"><h3>Manage tables</h3><p class="desc">Add, edit, and set table status.</p><div class="row"><a class="btn btn-ghost btn-sm" href="{% url 'table_list' %}">View tables</a></div></div></div>
+  <div class="dish"><div class="body"><h3>Browse menu</h3><p class="desc">Search dishes by name, category, or price.</p><div class="row"><a class="btn btn-ghost btn-sm" href="{% url 'menuitem_list' %}">Open menu</a></div></div></div>
   <div class="dish"><div class="body"><h3>Daily sales</h3><p class="desc">Revenue and order counts grouped by day.</p><div class="row"><a class="btn btn-ghost btn-sm" href="{% url 'daily_report' %}">View report</a></div></div></div>
 </div>
+
+{% else %}
+{# ── CUSTOMER DASHBOARD ── #}
+<div class="page-head">
+  <div>
+    <h1>Welcome back, {{ user.get_full_name|default:user.username }}!</h1>
+    <p>Browse our menu and place your order.</p>
+  </div>
+  <a class="btn btn-primary" href="{% url 'order_create' %}">+ Place order</a>
+</div>
+
+<div class="stat-grid">
+  <div class="stat"><div class="num">{{ item_count }}</div><div class="label">Items available</div></div>
+  <div class="stat"><div class="num">{{ my_order_count }}</div><div class="label">My orders</div></div>
+  <div class="stat"><div class="num">{{ my_pending_count }}</div><div class="label">Being prepared</div></div>
+</div>
+
+<h2>What would you like to do?</h2>
+<div class="item-grid">
+  <div class="dish"><div class="body"><h3>Browse the menu</h3><p class="desc">Search dishes by name, category, or price.</p><div class="row"><a class="btn btn-ghost btn-sm" href="{% url 'menuitem_list' %}">Open menu</a></div></div></div>
+  <div class="dish"><div class="body"><h3>Place an order</h3><p class="desc">Add items and submit your order.</p><div class="row"><a class="btn btn-ghost btn-sm" href="{% url 'order_create' %}">Order now</a></div></div></div>
+  <div class="dish"><div class="body"><h3>My orders</h3><p class="desc">Track the status of your orders.</p><div class="row"><a class="btn btn-ghost btn-sm" href="{% url 'order_list' %}">View orders</a></div></div></div>
+</div>
+{% endif %}
 {% endblock %}

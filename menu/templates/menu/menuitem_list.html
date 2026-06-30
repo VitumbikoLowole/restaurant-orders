@@ -4,10 +4,11 @@
 {% block content %}
 <div class="page-head">
   <div><h1>The menu</h1><p>{{ page_obj.paginator.count }} item{{ page_obj.paginator.count|pluralize }} on offer.</p></div>
-  <a class="btn btn-primary" href="{% url 'menuitem_create' %}">+ Add item</a>
+  {% if user_is_staff %}
+    <a class="btn btn-primary" href="{% url 'menuitem_create' %}">+ Add item</a>
+  {% endif %}
 </div>
 
-{# Search: keyword (name OR description) + category + price range. Backed by Q objects. #}
 <form method="get" class="search">
   <div>
     <label for="id_q">{{ search_form.q.label }}</label>
@@ -41,10 +42,15 @@
       <p class="desc">{{ item.description|default:"—"|truncatewords:14 }}</p>
       {% if item.is_available %}<span class="pill pill-avail">Available</span>{% else %}<span class="pill pill-out">Unavailable</span>{% endif %}
       <div class="price">RWF{{ item.price }}</div>
+      {% if item.preparation_time %}
+        <div style="font-size:.8rem;color:var(--ink-soft)">~{{ item.preparation_time }} min prep</div>
+      {% endif %}
       <div class="row">
         <a class="btn btn-ghost btn-sm" href="{% url 'menuitem_detail' item.pk %}">View</a>
-        <a class="btn btn-ghost btn-sm" href="{% url 'menuitem_update' item.pk %}">Edit</a>
-        <a class="btn btn-danger btn-sm" href="{% url 'menuitem_delete' item.pk %}">Delete</a>
+        {% if user_is_staff %}
+          <a class="btn btn-ghost btn-sm" href="{% url 'menuitem_update' item.pk %}">Edit</a>
+          <a class="btn btn-danger btn-sm" href="{% url 'menuitem_delete' item.pk %}">Delete</a>
+        {% endif %}
       </div>
     </div>
   </div>

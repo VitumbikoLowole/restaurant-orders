@@ -3,19 +3,36 @@
 
 {% block content %}
 <div class="page-head">
-  <div><h1>Customers</h1></div>
+  <div><h1>Customers</h1><p>{{ customers|length }} account{{ customers|length|pluralize }} registered.</p></div>
+  <a class="btn btn-primary" href="{% url 'customer_create' %}">+ New account</a>
 </div>
 
 {% if customers %}
 <div class="table-wrap">
   <table>
-    <thead><tr><th>Customer</th><th>Username</th><th>Phone</th><th>Orders</th><th></th></tr></thead>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Username</th>
+        <th>Phone</th>
+        <th>Role</th>
+        <th>Orders</th>
+        <th></th>
+      </tr>
+    </thead>
     <tbody>
       {% for cust in customers %}
       <tr>
         <td><strong>{{ cust }}</strong></td>
         <td>{{ cust.user.username }}</td>
         <td>{{ cust.phone|default:"—" }}</td>
+        <td>
+          {% if cust.role == "staff" or cust.user.is_staff %}
+            <span class="pill pill-staff">Staff</span>
+          {% else %}
+            <span class="pill">Customer</span>
+          {% endif %}
+        </td>
         <td>{{ cust.num_orders }}</td>
         <td style="text-align:right;white-space:nowrap">
           <a class="btn btn-ghost btn-sm" href="{% url 'customer_update' cust.pk %}">Edit</a>
@@ -27,6 +44,6 @@
   </table>
 </div>
 {% else %}
-<div class="card empty">No customers yet. Register a user to create one automatically.</div>
+<div class="card empty">No customers yet. Accounts are created automatically on registration, or you can <a href="{% url 'customer_create' %}">create one manually</a>.</div>
 {% endif %}
 {% endblock %}

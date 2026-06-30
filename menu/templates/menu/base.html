@@ -20,22 +20,41 @@
 
       <span class="group-label">Menu</span>
       <a href="{% url 'menuitem_list' %}">Menu items</a>
-      <a href="{% url 'category_list' %}">Categories</a>
+      {% if user_is_staff %}
+        <a href="{% url 'category_list' %}">Categories</a>
+      {% endif %}
 
-      <span class="group-label">Service</span>
-      <a href="{% url 'order_list' %}">Orders</a>
-      <a href="{% url 'order_create' %}">New order</a>
-      <a href="{% url 'customer_list' %}">Customers</a>
+      {% if user_is_staff %}
+        <span class="group-label">Restaurant</span>
+        <a href="{% url 'table_list' %}">Tables</a>
+        <a href="{% url 'customer_list' %}">Customers</a>
+      {% endif %}
 
-      <span class="group-label">Insight</span>
-      <a href="{% url 'daily_report' %}">Daily sales</a>
-      <a href="/api/orders/today/">API: today's orders</a>
+      <span class="group-label">Orders</span>
+      <a href="{% url 'order_list' %}">{% if user_is_staff %}All orders{% else %}My orders{% endif %}</a>
+      <a href="{% url 'order_create' %}">+ New order</a>
+
+      {% if user_is_staff %}
+        <span class="group-label">Reports</span>
+        <a href="{% url 'daily_report' %}">Daily sales</a>
+        <a href="/api/orders/today/">API: today's orders</a>
+      {% endif %}
+
+      {% if user.is_authenticated and not user_is_staff %}
+        <span class="group-label">My account</span>
+        {% if user.customer %}
+          <a href="{% url 'customer_update' user.customer.pk %}">Edit profile</a>
+        {% endif %}
+      {% endif %}
     </nav>
 
     <div class="sidebar-footer">
       {% if user.is_authenticated %}
         <div>Signed in as</div>
-        <div class="user">{{ user.username }}</div>
+        <div class="user">
+          {{ user.username }}
+          {% if user_is_staff %}<span class="pill pill-staff" style="font-size:.65rem;margin-left:4px">Staff</span>{% endif %}
+        </div>
         <form method="post" action="{% url 'logout' %}">
           {% csrf_token %}
           <button type="submit" class="linklike">Log out</button>
