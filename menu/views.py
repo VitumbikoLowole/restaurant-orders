@@ -23,9 +23,11 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
+import datetime
+
 from django.db import transaction
-from django.db.models import Q, Sum, Count, F
-from django.db.models.functions import TruncDate
+from django.db.models import Q, Sum, Count, F, DateField
+from django.db.models.functions import Cast, TruncDate
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse_lazy
 from django.utils import timezone
@@ -546,18 +548,29 @@ class OrderDeleteView(StaffRequiredMixin, DeleteView):
 
 @staff_required
 def daily_sales_report(request):
+    # Cast avoids CONVERT_TZ (which requires MySQL timezone tables).
+    # All orders are included — there is no "cancelled" status to exclude.
     rows = (
-        Order.objects.exclude(status=Order.Status.COMPLETED)
-        .annotate(day=TruncDate("created_at"))
+        Order.objects
+        .annotate(day=Cast("created_at", output_field=DateField()))
         .values("day")
         .annotate(num_orders=Count("id"), revenue=Sum("total_price"))
         .order_by("-day")
     )
 
+    # Build a tz-aware datetime range for today so MySQL uses a plain
+    # BETWEEN comparison instead of CONVERT_TZ.
     today = timezone.localdate()
+    tz = timezone.get_current_timezone()
+    today_start = timezone.make_aware(
+        datetime.datetime.combine(today, datetime.time.min), tz
+    )
+    today_end = timezone.make_aware(
+        datetime.datetime.combine(today, datetime.time.max), tz
+    )
     today_revenue = (
-        Order.objects.filter(created_at__date=today)
-        .exclude(status=Order.Status.COMPLETED)
+        Order.objects
+        .filter(created_at__range=(today_start, today_end))
         .aggregate(total=Sum("total_price"))["total"]
         or Decimal("0.00")
     )

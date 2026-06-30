@@ -22,11 +22,19 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 
 class OrderSerializer(serializers.ModelSerializer):
-    customer_name = serializers.CharField(source="customer.__str__", read_only=True)
-    # source="order_items" uses the reverse FK accessor to get all lines
+    # customer_name is the model field (stored text, e.g. "John Doe").
+    # customer_display is a computed fallback for walk-in orders.
+    customer_display = serializers.SerializerMethodField()
     lines = OrderItemSerializer(source="order_items", many=True, read_only=True)
 
     class Meta:
         model = Order
-        fields = ["id", "customer", "customer_name", "status",
-                  "total_price", "created_at", "lines"]
+        fields = [
+            "id", "customer", "customer_name", "customer_display",
+            "status", "total_price", "created_at", "lines",
+        ]
+
+    def get_customer_display(self, obj):
+        if obj.customer:
+            return str(obj.customer)
+        return obj.customer_name or "Walk-in"

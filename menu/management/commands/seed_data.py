@@ -81,13 +81,12 @@ class Command(BaseCommand):
         customers = []
         for i in range(1, 6):
             username = f"customer{i}"
-            user, created = User.objects.get_or_create(
+            user, _ = User.objects.get_or_create(
                 username=username,
-                defaults={"first_name": f"Customer", "last_name": str(i), "email": f"{username}@example.com"},
+                defaults={"first_name": "Customer", "last_name": str(i), "email": f"{username}@example.com"},
             )
-            if created:
-                user.set_password("demopass123")
-                user.save()
+            user.set_password("demopass123")
+            user.save()
             customer = user.customer
             customer.phone = f"+25078{i:07d}"
             customer.role = Customer.CUSTOMER
@@ -95,17 +94,14 @@ class Command(BaseCommand):
             customers.append(customer)
 
         self.stdout.write("Seeding staff account...")
-        staff_user, created = User.objects.get_or_create(
+        staff_user, _ = User.objects.get_or_create(
             username="staff",
             defaults={"first_name": "Staff", "last_name": "Member", "email": "staff@example.com"},
         )
-        if created:
-            staff_user.set_password("staffpass123")
-            staff_user.save()
+        staff_user.set_password("staffpass123")
+        staff_user.save()
         staff_user.customer.role = Customer.STAFF
         staff_user.customer.save()
-        if created:
-            self.stdout.write("  Created staff user 'staff' / 'staffpass123'.")
 
         self.stdout.write("Seeding orders spread across the last few days...")
         statuses = [
@@ -136,12 +132,16 @@ class Command(BaseCommand):
                 )
             order.recalc_total()
 
-        # Superuser for Django admin panel screenshots
-        if not User.objects.filter(username="admin").exists():
-            User.objects.create_superuser("admin", "admin@example.com", "adminpass123")
-            # Mark admin's customer profile as staff too
-            User.objects.get(username="admin").customer.role = Customer.STAFF
-            User.objects.get(username="admin").customer.save()
+        # Superuser for Django admin panel
+        admin_user, created = User.objects.get_or_create(username="admin")
+        admin_user.email = "admin@example.com"
+        admin_user.is_staff = True
+        admin_user.is_superuser = True
+        admin_user.set_password("adminpass123")
+        admin_user.save()
+        admin_user.customer.role = Customer.STAFF
+        admin_user.customer.save()
+        if created:
             self.stdout.write("  Created superuser 'admin' / 'adminpass123'.")
 
         self.stdout.write(self.style.SUCCESS(
