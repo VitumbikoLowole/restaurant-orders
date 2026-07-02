@@ -96,6 +96,26 @@ def home(request):
         return render(request, "menu/home.html", {})
 
     if is_staff_member(request.user):
+        # ML forecast summary — shown on dashboard; fails gracefully if not trained
+        ml_summary = None
+        try:
+            from ml.predictor import get_predictions
+            forecast = get_predictions()
+            today_hours = forecast["today"]["hours"]
+            now_hour = timezone.localtime(timezone.now()).hour
+            next_peak = next(
+                (h for h in today_hours if h["hour"] > now_hour and h["is_peak"]),
+                None,
+            )
+            ml_summary = {
+                "total_predicted": forecast["today"]["total_predicted"],
+                "peak_count":      forecast["today"]["peak_count"],
+                "next_peak_label": next_peak["label"] if next_peak else None,
+                "peaks":           forecast["today"]["peaks"],
+            }
+        except Exception:
+            pass
+
         context = {
             "category_count": MenuCategory.objects.count(),
             "item_count": MenuItem.objects.count(),
@@ -103,6 +123,7 @@ def home(request):
             "customer_count": Customer.objects.count(),
             "order_count": Order.objects.count(),
             "pending_count": Order.objects.filter(status=Order.Status.PENDING).count(),
+            "ml": ml_summary,
         }
     else:
         try:
@@ -580,3 +601,35 @@ def daily_sales_report(request):
         "menu/daily_report.html",
         {"rows": rows, "today": today, "today_revenue": today_revenue},
     )
+
+
+# ==========================================================================
+# ML Forecast  (Staff only)
+# ==========================================================================
+
+@staff_required
+def ml_forecast(request):
+    import json as _json
+    try:
+        from ml.predictor import get_predictions
+        forecast = get_predictions()
+        error = None
+        today_json    = _json.dumps(forecast["today"]["hours"])
+        tomorrow_json = _json.dumps(forecast["tomorrow"]["hours"])
+    except FileNotFoundError:
+        forecast      = None
+        today_json    = "[]"
+        tomorrow_json = "[]"
+        error = "Models not trained yet. Run: python manage.py train_ml_models"
+    except Exception as exc:
+        forecast      = None
+        today_json    = "[]"
+        tomorrow_json = "[]"
+        error = str(exc)
+
+    return render(request, "menu/ml_forecast.html", {
+        "forecast":      forecast,
+        "today_json":    today_json,
+        "tomorrow_json": tomorrow_json,
+        "error":         error,
+    })

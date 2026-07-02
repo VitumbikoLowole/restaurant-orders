@@ -1,0 +1,50 @@
+{
+  "feature_cols": [
+    "hour_of_day",
+    "day_of_week",
+    "is_weekend",
+    "month",
+    "week_of_year",
+    "is_lunch_hour",
+    "is_dinner_hour",
+    "temperature_c",
+    "is_raining",
+    "rainfall_mm",
+    "is_public_holiday",
+    "is_school_holiday",
+    "lag_1d_orders",
+    "lag_7d_orders",
+    "rolling_7d_avg"
+  ],
+  "peak_threshold": 6.106009403467528,
+  "peak_percentile": 70,
+  "metrics": {
+    "volume_mae": 0.632,
+    "volume_rmse": 1.098,
+    "volume_r2": 0.933,
+    "peak_acc": 0.935,
+    "peak_f1": 0.883
+  },
+  "top_features": [
+    {
+      "name": "lag_7d_orders",
+      "importance": 0.8587
+    },
+    {
+      "name": "lag_1d_orders",
+      "importance": 0.0254
+    },
+    {
+      "name": "rainfall_mm",
+      "importance": 0.0222
+    },
+    {
+      "name": "day_of_week",
+      "importance": 0.0207
+    },
+    {
+      "name": "hour_of_day",
+      "importance": 0.0185
+    }
+  ]
+}

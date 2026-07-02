@@ -37,6 +37,7 @@
       {% if user_is_staff %}
         <span class="group-label">Reports</span>
         <a href="{% url 'daily_report' %}">Daily sales</a>
+        <a href="{% url 'ml_forecast' %}">ML Forecast</a>
         <a href="/api/orders/today/">API: today's orders</a>
       {% endif %}
 

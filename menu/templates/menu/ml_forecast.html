@@ -1,0 +1,260 @@
+{% extends "menu/base.html" %}
+{% block title %}ML Forecast · Tambala Kitchen{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Peak Period Forecast</h1>
+    <p>Random Forest predictions for order volumes and staffing needs.</p>
+  </div>
+  <a class="btn btn-ghost" href="{% url 'daily_report' %}">Daily sales</a>
+</div>
+
+{% if error %}
+  <div class="card" style="color:#c0392b;border-left:4px solid #c0392b;padding:1rem 1.25rem;">
+    <strong>Forecast unavailable:</strong> {{ error }}
+  </div>
+{% else %}
+
+{# ── Model performance metrics ─────────────────────────────────────────────── #}
+<h2 style="margin-top:1.5rem">Model performance</h2>
+<div class="stat-grid" style="grid-template-columns:repeat(5,1fr);max-width:860px">
+  <div class="stat">
+    <div class="num" style="font-size:1.5rem">{{ forecast.metrics.volume_r2 }}</div>
+    <div class="label">Volume R²</div>
+  </div>
+  <div class="stat">
+    <div class="num" style="font-size:1.5rem">{{ forecast.metrics.volume_mae }}</div>
+    <div class="label">Volume MAE</div>
+  </div>
+  <div class="stat">
+    <div class="num" style="font-size:1.5rem">{{ forecast.metrics.volume_rmse }}</div>
+    <div class="label">Volume RMSE</div>
+  </div>
+  <div class="stat">
+    <div class="num" style="font-size:1.5rem">{{ forecast.metrics.peak_acc }}</div>
+    <div class="label">Peak accuracy</div>
+  </div>
+  <div class="stat">
+    <div class="num" style="font-size:1.5rem">{{ forecast.metrics.peak_f1 }}</div>
+    <div class="label">Peak F1</div>
+  </div>
+</div>
+<p style="font-size:.8rem;color:#666;margin-top:.25rem">
+  Trained on 2 years of synthetic Kigali demand data (17 376 hourly observations).
+  Peak = any hour predicted ≥ {{ forecast.peak_threshold|floatformat:1 }} orders
+  ({{ forecast.peak_percentile }}th percentile of slot averages).
+</p>
+
+{% if forecast.top_features %}
+<details style="margin:.75rem 0;font-size:.85rem">
+  <summary style="cursor:pointer;color:#555">Top predictive features (volume model)</summary>
+  <ul style="margin:.5rem 0 0 1.25rem">
+    {% for f in forecast.top_features %}
+      <li>{{ f.name }} — importance {{ f.importance }}</li>
+    {% endfor %}
+  </ul>
+</details>
+{% endif %}
+
+{# ── Today ─────────────────────────────────────────────────────────────────── #}
+<h2 style="margin-top:2rem">Today · {{ forecast.today.date_label }}</h2>
+
+<div class="stat-grid" style="max-width:520px">
+  <div class="stat">
+    <div class="num">{{ forecast.today.total_predicted }}</div>
+    <div class="label">Predicted orders today</div>
+  </div>
+  <div class="stat">
+    <div class="num">{{ forecast.today.peak_count }}</div>
+    <div class="label">Peak hours today</div>
+  </div>
+</div>
+
+<div class="card" style="max-width:860px;padding:1.25rem;margin-top:1rem">
+  <canvas id="todayChart" height="80"></canvas>
+</div>
+
+{% if forecast.today.peaks %}
+<h3 style="margin-top:1.5rem">Today's staffing plan</h3>
+<div class="table-wrap" style="max-width:640px">
+  <table>
+    <thead>
+      <tr><th>Period</th><th>Status</th><th>Min. staff</th><th>Focus</th></tr>
+    </thead>
+    <tbody>
+      {# Staffing rows per peak window #}
+      {% for w in forecast.today.peaks %}
+      <tr>
+        <td><strong>{{ w.label }}</strong></td>
+        <td><span class="pill pill-staff">Peak</span></td>
+        <td>4</td>
+        <td>Full floor coverage + kitchen support</td>
+      </tr>
+      {% endfor %}
+      {# Inventory planning row #}
+      <tr>
+        <td>Off-peak hours</td>
+        <td><span class="pill">Normal</span></td>
+        <td>2</td>
+        <td>Prep, cleaning, restocking</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p style="color:#888;margin-top:1rem">No peak periods predicted for today.</p>
+{% endif %}
+
+{# ── Hourly breakdown table ────────────────────────────────────────────────── #}
+<details style="margin-top:1rem">
+  <summary style="cursor:pointer;font-weight:600">Hourly breakdown — today</summary>
+  <div class="table-wrap" style="max-width:560px;margin-top:.5rem">
+    <table>
+      <thead><tr><th>Hour</th><th>Pred. orders</th><th>Peak</th><th>Peak prob.</th><th>Staff</th></tr></thead>
+      <tbody>
+        {% for h in forecast.today.hours %}
+        <tr {% if h.is_peak %}style="background:#fff8e1"{% endif %}>
+          <td>{{ h.label }}</td>
+          <td>{{ h.predicted_orders }}</td>
+          <td>{% if h.is_peak %}<span class="pill pill-staff">Peak</span>{% else %}—{% endif %}</td>
+          <td>{{ h.peak_prob }}</td>
+          <td>{{ h.staff_needed }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+
+{# ── Tomorrow ──────────────────────────────────────────────────────────────── #}
+<h2 style="margin-top:2.5rem">Tomorrow · {{ forecast.tomorrow.date_label }}</h2>
+
+<div class="stat-grid" style="max-width:520px">
+  <div class="stat">
+    <div class="num">{{ forecast.tomorrow.total_predicted }}</div>
+    <div class="label">Predicted orders</div>
+  </div>
+  <div class="stat">
+    <div class="num">{{ forecast.tomorrow.peak_count }}</div>
+    <div class="label">Peak hours</div>
+  </div>
+</div>
+
+<div class="card" style="max-width:860px;padding:1.25rem;margin-top:1rem">
+  <canvas id="tomorrowChart" height="80"></canvas>
+</div>
+
+{% if forecast.tomorrow.peaks %}
+<h3 style="margin-top:1.5rem">Tomorrow's staffing plan</h3>
+<div class="table-wrap" style="max-width:640px">
+  <table>
+    <thead>
+      <tr><th>Period</th><th>Status</th><th>Min. staff</th><th>Focus</th></tr>
+    </thead>
+    <tbody>
+      {% for w in forecast.tomorrow.peaks %}
+      <tr>
+        <td><strong>{{ w.label }}</strong></td>
+        <td><span class="pill pill-staff">Peak</span></td>
+        <td>4</td>
+        <td>Full floor coverage + kitchen support</td>
+      </tr>
+      {% endfor %}
+      <tr>
+        <td>Off-peak hours</td>
+        <td><span class="pill">Normal</span></td>
+        <td>2</td>
+        <td>Prep, cleaning, restocking</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<details style="margin-top:1rem">
+  <summary style="cursor:pointer;font-weight:600">Hourly breakdown — tomorrow</summary>
+  <div class="table-wrap" style="max-width:560px;margin-top:.5rem">
+    <table>
+      <thead><tr><th>Hour</th><th>Pred. orders</th><th>Peak</th><th>Peak prob.</th><th>Staff</th></tr></thead>
+      <tbody>
+        {% for h in forecast.tomorrow.hours %}
+        <tr {% if h.is_peak %}style="background:#fff8e1"{% endif %}>
+          <td>{{ h.label }}</td>
+          <td>{{ h.predicted_orders }}</td>
+          <td>{% if h.is_peak %}<span class="pill pill-staff">Peak</span>{% else %}—{% endif %}</td>
+          <td>{{ h.peak_prob }}</td>
+          <td>{{ h.staff_needed }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+
+{% endif %}{# end error check #}
+{% endblock %}
+
+{% block scripts %}
+{% if not error and forecast %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  const todayData    = {{ today_json|safe }};
+  const tomorrowData = {{ tomorrow_json|safe }};
+
+  function buildChart(canvasId, hours) {
+    const labels  = hours.map(h => h.label);
+    const orders  = hours.map(h => h.predicted_orders);
+    const colors  = hours.map(h => h.is_peak ? 'rgba(230,126,34,0.85)' : 'rgba(52,152,219,0.65)');
+    const borders = hours.map(h => h.is_peak ? '#e67e22' : '#2980b9');
+
+    new Chart(document.getElementById(canvasId), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Predicted orders',
+          data: orders,
+          backgroundColor: colors,
+          borderColor: borders,
+          borderWidth: 1,
+          borderRadius: 3,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              afterLabel: (ctx) => {
+                const h = hours[ctx.dataIndex];
+                return [
+                  'Peak: ' + (h.is_peak ? 'Yes' : 'No'),
+                  'Peak prob: ' + (h.peak_prob * 100).toFixed(1) + '%',
+                  'Staff needed: ' + h.staff_needed,
+                ];
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            title: { display: true, text: 'Predicted orders / hour' }
+          },
+          x: {
+            title: { display: true, text: 'Hour of day' }
+          }
+        }
+      }
+    });
+  }
+
+  buildChart('todayChart',    todayData);
+  buildChart('tomorrowChart', tomorrowData);
+})();
+</script>
+{% endif %}
+{% endblock %}

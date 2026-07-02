@@ -38,4 +38,5 @@ urlpatterns = [
 
     # Reports (Staff only)
     path("reports/daily/", views.daily_sales_report, name="daily_report"),
+    path("reports/ml-forecast/", views.ml_forecast, name="ml_forecast"),
 ]

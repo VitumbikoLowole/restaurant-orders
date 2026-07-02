@@ -36,12 +36,41 @@
   <div class="stat"><div class="num">{{ pending_count }}</div><div class="label">Pending now</div></div>
 </div>
 
+{% if ml %}
+<h2 style="margin-top:1.75rem">Today's forecast
+  <a href="{% url 'ml_forecast' %}" style="font-size:.8rem;font-weight:400;margin-left:.75rem;color:#888">Full forecast &rsaquo;</a>
+</h2>
+<div class="stat-grid" style="max-width:620px">
+  <div class="stat">
+    <div class="num">{{ ml.total_predicted }}</div>
+    <div class="label">Predicted orders today</div>
+  </div>
+  <div class="stat">
+    <div class="num">{{ ml.peak_count }}</div>
+    <div class="label">Peak hours today</div>
+  </div>
+  <div class="stat">
+    <div class="num">{% if ml.next_peak_label %}{{ ml.next_peak_label }}{% else %}—{% endif %}</div>
+    <div class="label">Next peak hour</div>
+  </div>
+</div>
+{% if ml.peaks %}
+<div style="font-size:.85rem;color:#555;margin:.25rem 0 1.25rem">
+  Peak windows today:
+  {% for w in ml.peaks %}
+    <span class="pill pill-staff" style="font-size:.75rem">{{ w.label }}</span>
+  {% endfor %}
+</div>
+{% endif %}
+{% endif %}
+
 <h2>Quick actions</h2>
 <div class="item-grid">
   <div class="dish"><div class="body"><h3>Take an order</h3><p class="desc">Pick a customer, add items, total is automatic.</p><div class="row"><a class="btn btn-ghost btn-sm" href="{% url 'order_create' %}">Place order</a></div></div></div>
   <div class="dish"><div class="body"><h3>Manage tables</h3><p class="desc">Add, edit, and set table status.</p><div class="row"><a class="btn btn-ghost btn-sm" href="{% url 'table_list' %}">View tables</a></div></div></div>
   <div class="dish"><div class="body"><h3>Browse menu</h3><p class="desc">Search dishes by name, category, or price.</p><div class="row"><a class="btn btn-ghost btn-sm" href="{% url 'menuitem_list' %}">Open menu</a></div></div></div>
   <div class="dish"><div class="body"><h3>Daily sales</h3><p class="desc">Revenue and order counts grouped by day.</p><div class="row"><a class="btn btn-ghost btn-sm" href="{% url 'daily_report' %}">View report</a></div></div></div>
+  <div class="dish"><div class="body"><h3>ML Forecast</h3><p class="desc">Predicted peak periods and staffing plan.</p><div class="row"><a class="btn btn-ghost btn-sm" href="{% url 'ml_forecast' %}">View forecast</a></div></div></div>
 </div>
 
 {% else %}
