@@ -73,21 +73,36 @@ def _real_lag_orders(date: datetime.date) -> float:
         return 0.0
 
 
-def _build_feature_matrix(date: datetime.date) -> np.ndarray:
-    """Return shape (24, 15) feature matrix — one row per hour."""
-    rng = random.Random(date.toordinal())   # deterministic per date
-    temp, is_raining, rainfall_mm = simulate_weather(date, rng)
+def _build_feature_matrix(
+    date: datetime.date,
+    temperature_c: Optional[float] = None,
+    is_raining: Optional[bool] = None,
+    rainfall_mm: Optional[float] = None,
+    is_public_holiday_flag: Optional[bool] = None,
+    is_school_holiday_flag: Optional[bool] = None,
+) -> np.ndarray:
+    """
+    Return shape (24, 15) feature matrix — one row per hour.
+
+    Weather and event parameters default to simulated/auto-detected values
+    when not supplied.  Pass them explicitly for user-driven predictions.
+    """
+    rng = random.Random(date.toordinal())
+    sim_temp, sim_raining, sim_rainfall = simulate_weather(date, rng)
+
+    temp       = temperature_c if temperature_c is not None else sim_temp
+    raining    = is_raining    if is_raining    is not None else sim_raining
+    rainfall   = rainfall_mm   if rainfall_mm   is not None else sim_rainfall
+    is_pub     = is_public_holiday_flag  if is_public_holiday_flag  is not None else is_public_holiday(date)
+    is_sch     = is_school_holiday_flag  if is_school_holiday_flag  is not None else is_school_holiday(date)
 
     dow     = date.weekday()
     month   = date.month
     week    = date.isocalendar()[1]
-    is_pub  = is_public_holiday(date)
-    is_sch  = is_school_holiday(date)
     rolling = _real_lag_orders(date)
 
     rows = []
     for hour in range(24):
-        # Approximate per-hour lag using seasonal baseline
         slot_base = HOURLY_BASE[hour] * DAY_MULTIPLIER[dow]
         rows.append([
             hour,
@@ -98,26 +113,43 @@ def _build_feature_matrix(date: datetime.date) -> np.ndarray:
             int(11 <= hour <= 14),
             int(18 <= hour <= 21),
             temp,
-            int(is_raining),
-            rainfall_mm,
+            int(raining),
+            rainfall,
             int(is_pub),
             int(is_sch),
-            slot_base,   # lag_1d_orders  (approximate)
-            slot_base,   # lag_7d_orders  (approximate)
-            rolling,     # rolling_7d_avg (from real DB)
+            slot_base,
+            slot_base,
+            rolling,
         ])
     return np.array(rows, dtype=float)
 
 
-def predict_day(date: datetime.date) -> list:
+def predict_day(
+    date: datetime.date,
+    temperature_c: Optional[float] = None,
+    is_raining: Optional[bool] = None,
+    rainfall_mm: Optional[float] = None,
+    is_public_holiday_flag: Optional[bool] = None,
+    is_school_holiday_flag: Optional[bool] = None,
+) -> list:
     """
     Return a list of 24 dicts, one per hour:
         hour, label, predicted_orders, is_peak, peak_prob
     """
-    loaded     = _load()
+    loaded       = _load()
     feature_cols = loaded["meta"]["feature_cols"]
-    X          = pd.DataFrame(_build_feature_matrix(date), columns=feature_cols)
-    X_s        = loaded["scaler"].transform(X)
+    X  = pd.DataFrame(
+        _build_feature_matrix(
+            date,
+            temperature_c=temperature_c,
+            is_raining=is_raining,
+            rainfall_mm=rainfall_mm,
+            is_public_holiday_flag=is_public_holiday_flag,
+            is_school_holiday_flag=is_school_holiday_flag,
+        ),
+        columns=feature_cols,
+    )
+    X_s = loaded["scaler"].transform(X)
 
     volumes    = loaded["vol_model"].predict(X_s)
     peak_probs = loaded["peak_model"].predict_proba(X_s)[:, 1]

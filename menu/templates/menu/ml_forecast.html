@@ -10,9 +10,165 @@
   <a class="btn btn-ghost" href="{% url 'daily_report' %}">Daily sales</a>
 </div>
 
+{# ── Custom prediction form (always visible) ──────────────────────────────── #}
+<div class="card" style="max-width:680px;padding:1.5rem;margin-bottom:2rem">
+  <h2 style="margin:0 0 1rem">Custom prediction</h2>
+  <p style="font-size:.85rem;color:#666;margin-bottom:1.25rem">
+    Enter a date and conditions to get a tailored hourly forecast.
+  </p>
+  <form method="get" action="{% url 'ml_forecast' %}">
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem 1.25rem">
+
+      <div>
+        <label style="font-size:.85rem;font-weight:600;display:block;margin-bottom:.3rem">Date</label>
+        <input type="date" name="predict_date"
+               value="{{ form_values.predict_date }}"
+               required
+               style="width:100%;padding:.45rem .6rem;border:1px solid #ccc;border-radius:6px;font-size:.9rem">
+      </div>
+
+      <div>
+        <label style="font-size:.85rem;font-weight:600;display:block;margin-bottom:.3rem">Temperature (°C)</label>
+        <input type="number" name="temperature_c" min="14" max="28" step="0.5"
+               value="{{ form_values.temperature_c|default:'21' }}"
+               style="width:100%;padding:.45rem .6rem;border:1px solid #ccc;border-radius:6px;font-size:.9rem">
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:.5rem">
+        <label style="font-size:.85rem;font-weight:600">Weather</label>
+        <label style="font-size:.875rem;display:flex;align-items:center;gap:.5rem;cursor:pointer">
+          <input type="checkbox" name="is_raining" id="rainingCheck"
+                 {% if form_values.is_raining %}checked{% endif %}
+                 onchange="document.getElementById('rainfallRow').style.display=this.checked?'block':'none'">
+          Raining
+        </label>
+        <div id="rainfallRow" style="display:{% if form_values.is_raining %}block{% else %}none{% endif %}">
+          <label style="font-size:.8rem;color:#555">Rainfall (mm)</label>
+          <input type="number" name="rainfall_mm" min="0" max="80" step="0.5"
+                 value="{{ form_values.rainfall_mm|default:'0' }}"
+                 style="width:100%;padding:.4rem .6rem;border:1px solid #ccc;border-radius:6px;font-size:.9rem;margin-top:.2rem">
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:.5rem">
+        <label style="font-size:.85rem;font-weight:600">Special conditions</label>
+        <label style="font-size:.875rem;display:flex;align-items:center;gap:.5rem;cursor:pointer">
+          <input type="checkbox" name="is_public_holiday"
+                 {% if form_values.is_public_holiday %}checked{% endif %}>
+          Public holiday
+        </label>
+        <label style="font-size:.875rem;display:flex;align-items:center;gap:.5rem;cursor:pointer">
+          <input type="checkbox" name="is_school_holiday"
+                 {% if form_values.is_school_holiday %}checked{% endif %}>
+          School holiday / break
+        </label>
+      </div>
+
+    </div>
+
+    <div style="margin-top:1.25rem">
+      <button type="submit" class="btn btn-primary">Predict</button>
+      {% if custom_result %}
+        <a href="{% url 'ml_forecast' %}" class="btn btn-ghost" style="margin-left:.5rem">Clear</a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+{# ── Custom prediction output ──────────────────────────────────────────────── #}
+{% if custom_form_error %}
+  <div class="card" style="color:#c0392b;border-left:4px solid #c0392b;padding:1rem 1.25rem;max-width:680px;margin-bottom:2rem">
+    <strong>Prediction error:</strong> {{ custom_form_error }}
+  </div>
+{% endif %}
+
+{% if custom_result %}
+<div style="border-left:4px solid #27ae60;padding-left:1.25rem;margin-bottom:2.5rem">
+  <h2 style="margin-top:0">Prediction result · {{ custom_result.date_label }}</h2>
+
+  <p style="font-size:.85rem;color:#555;margin-bottom:.75rem">
+    Inputs used:
+    {{ custom_result.inputs.temperature_c }}°C &middot;
+    {% if custom_result.inputs.is_raining %}
+      Raining ({{ custom_result.inputs.rainfall_mm }} mm)
+    {% else %}
+      No rain
+    {% endif %}
+    {% if custom_result.inputs.is_public_holiday %} &middot; Public holiday{% endif %}
+    {% if custom_result.inputs.is_school_holiday %} &middot; School holiday{% endif %}
+  </p>
+
+  <div class="stat-grid" style="max-width:520px">
+    <div class="stat">
+      <div class="num">{{ custom_result.total_predicted }}</div>
+      <div class="label">Predicted orders</div>
+    </div>
+    <div class="stat">
+      <div class="num">{{ custom_result.peak_count }}</div>
+      <div class="label">Peak hours</div>
+    </div>
+  </div>
+
+  <div class="card" style="max-width:860px;padding:1.25rem;margin-top:1rem">
+    <canvas id="customChart" height="80"></canvas>
+  </div>
+
+  {% if custom_result.peaks %}
+  <h3 style="margin-top:1.5rem">Staffing plan for {{ custom_result.date_label }}</h3>
+  <div class="table-wrap" style="max-width:640px">
+    <table>
+      <thead>
+        <tr><th>Period</th><th>Status</th><th>Min. staff</th><th>Focus</th></tr>
+      </thead>
+      <tbody>
+        {% for w in custom_result.peaks %}
+        <tr>
+          <td><strong>{{ w.label }}</strong></td>
+          <td><span class="pill pill-staff">Peak</span></td>
+          <td>4</td>
+          <td>Full floor coverage + kitchen support</td>
+        </tr>
+        {% endfor %}
+        <tr>
+          <td>Off-peak hours</td>
+          <td><span class="pill">Normal</span></td>
+          <td>2</td>
+          <td>Prep, cleaning, restocking</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p style="color:#888;margin-top:.75rem">No peak periods predicted for this date.</p>
+  {% endif %}
+
+  <details style="margin-top:1rem">
+    <summary style="cursor:pointer;font-weight:600">Hourly breakdown</summary>
+    <div class="table-wrap" style="max-width:560px;margin-top:.5rem">
+      <table>
+        <thead><tr><th>Hour</th><th>Pred. orders</th><th>Peak</th><th>Peak prob.</th><th>Staff</th></tr></thead>
+        <tbody>
+          {% for h in custom_result.hours %}
+          <tr {% if h.is_peak %}style="background:#fff8e1"{% endif %}>
+            <td>{{ h.label }}</td>
+            <td>{{ h.predicted_orders }}</td>
+            <td>{% if h.is_peak %}<span class="pill pill-staff">Peak</span>{% else %}—{% endif %}</td>
+            <td>{{ h.peak_prob }}</td>
+            <td>{{ h.staff_needed }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+</div>
+{% endif %}
+
+{# ── Auto forecast (today + tomorrow) ─────────────────────────────────────── #}
 {% if error %}
   <div class="card" style="color:#c0392b;border-left:4px solid #c0392b;padding:1rem 1.25rem;">
-    <strong>Forecast unavailable:</strong> {{ error }}
+    <strong>Auto-forecast unavailable:</strong> {{ error }}
   </div>
 {% else %}
 
@@ -196,20 +352,18 @@
 {% endblock %}
 
 {% block scripts %}
-{% if not error and forecast %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 (function () {
-  const todayData    = {{ today_json|safe }};
-  const tomorrowData = {{ tomorrow_json|safe }};
-
   function buildChart(canvasId, hours) {
+    const el = document.getElementById(canvasId);
+    if (!el || !hours.length) return;
     const labels  = hours.map(h => h.label);
     const orders  = hours.map(h => h.predicted_orders);
     const colors  = hours.map(h => h.is_peak ? 'rgba(230,126,34,0.85)' : 'rgba(52,152,219,0.65)');
     const borders = hours.map(h => h.is_peak ? '#e67e22' : '#2980b9');
 
-    new Chart(document.getElementById(canvasId), {
+    new Chart(el, {
       type: 'bar',
       data: {
         labels,
@@ -240,21 +394,16 @@
           }
         },
         scales: {
-          y: {
-            beginAtZero: true,
-            title: { display: true, text: 'Predicted orders / hour' }
-          },
-          x: {
-            title: { display: true, text: 'Hour of day' }
-          }
+          y: { beginAtZero: true, title: { display: true, text: 'Predicted orders / hour' } },
+          x: { title: { display: true, text: 'Hour of day' } }
         }
       }
     });
   }
 
-  buildChart('todayChart',    todayData);
-  buildChart('tomorrowChart', tomorrowData);
+  buildChart('customChart',   {{ custom_json|safe }});
+  buildChart('todayChart',    {{ today_json|safe }});
+  buildChart('tomorrowChart', {{ tomorrow_json|safe }});
 })();
 </script>
-{% endif %}
 {% endblock %}

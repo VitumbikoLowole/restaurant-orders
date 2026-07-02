@@ -610,26 +610,89 @@ def daily_sales_report(request):
 @staff_required
 def ml_forecast(request):
     import json as _json
+
+    # ── Auto forecast (today + tomorrow) ────────────────────────────────────
+    forecast      = None
+    today_json    = "[]"
+    tomorrow_json = "[]"
+    auto_error    = None
     try:
         from ml.predictor import get_predictions
-        forecast = get_predictions()
-        error = None
+        forecast      = get_predictions()
         today_json    = _json.dumps(forecast["today"]["hours"])
         tomorrow_json = _json.dumps(forecast["tomorrow"]["hours"])
     except FileNotFoundError:
-        forecast      = None
-        today_json    = "[]"
-        tomorrow_json = "[]"
-        error = "Models not trained yet. Run: python manage.py train_ml_models"
+        auto_error = "Models not trained yet. Run: python manage.py train_ml_models"
     except Exception as exc:
-        forecast      = None
-        today_json    = "[]"
-        tomorrow_json = "[]"
-        error = str(exc)
+        auto_error = str(exc)
+
+    # ── Custom prediction form (GET params) ──────────────────────────────────
+    custom_result      = None
+    custom_json        = "[]"
+    custom_form_error  = None
+    form_values        = {}   # echoed back to pre-fill the form
+
+    if "predict_date" in request.GET:
+        try:
+            from ml.predictor import predict_day, _peak_windows, _staffing_for
+            raw_date  = request.GET.get("predict_date", "")
+            pred_date = datetime.date.fromisoformat(raw_date)
+
+            temp        = float(request.GET.get("temperature_c", 21))
+            raining     = request.GET.get("is_raining") == "on"
+            rainfall    = float(request.GET.get("rainfall_mm", 0)) if raining else 0.0
+            is_pub_hol  = request.GET.get("is_public_holiday") == "on"
+            is_sch_hol  = request.GET.get("is_school_holiday") == "on"
+
+            form_values = {
+                "predict_date":      raw_date,
+                "temperature_c":     temp,
+                "is_raining":        raining,
+                "rainfall_mm":       rainfall,
+                "is_public_holiday": is_pub_hol,
+                "is_school_holiday": is_sch_hol,
+            }
+
+            hours = predict_day(
+                pred_date,
+                temperature_c=temp,
+                is_raining=raining,
+                rainfall_mm=rainfall,
+                is_public_holiday_flag=is_pub_hol,
+                is_school_holiday_flag=is_sch_hol,
+            )
+            for h in hours:
+                h["staff_needed"] = _staffing_for(h["predicted_orders"])
+
+            custom_result = {
+                "date":            pred_date,
+                "date_label":      pred_date.strftime("%A, %d %b %Y"),
+                "hours":           hours,
+                "peaks":           _peak_windows(hours),
+                "total_predicted": sum(h["predicted_orders"] for h in hours),
+                "peak_count":      sum(1 for h in hours if h["is_peak"]),
+                "inputs": {
+                    "temperature_c":     temp,
+                    "is_raining":        raining,
+                    "rainfall_mm":       rainfall,
+                    "is_public_holiday": is_pub_hol,
+                    "is_school_holiday": is_sch_hol,
+                },
+            }
+            custom_json = _json.dumps(hours)
+
+        except (ValueError, TypeError) as exc:
+            custom_form_error = f"Invalid input: {exc}"
+        except Exception as exc:
+            custom_form_error = str(exc)
 
     return render(request, "menu/ml_forecast.html", {
-        "forecast":      forecast,
-        "today_json":    today_json,
-        "tomorrow_json": tomorrow_json,
-        "error":         error,
+        "forecast":         forecast,
+        "today_json":       today_json,
+        "tomorrow_json":    tomorrow_json,
+        "error":            auto_error,
+        "custom_result":    custom_result,
+        "custom_json":      custom_json,
+        "custom_form_error": custom_form_error,
+        "form_values":      form_values,
     })
